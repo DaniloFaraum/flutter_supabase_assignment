@@ -366,6 +366,195 @@ class _UsersPageState extends State<UsersPage> {
     }
   }
 
+  Future<void> _updateUser({
+    required dynamic id,
+    required String name,
+    required String email,
+  }) async {
+    final String trimmedName = name.trim();
+    final String trimmedEmail = email.trim();
+
+    if (trimmedName.isEmpty || trimmedEmail.isEmpty) {
+      setState(() {
+        _statusMessage = 'Preencha nome e email para editar.';
+      });
+      return;
+    }
+
+    setState(() {
+      _statusMessage = null;
+    });
+
+    try {
+      await _supabase.from('users').update(<String, String>{
+        'name': trimmedName,
+        'email': trimmedEmail,
+      }).eq('id', id);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = 'Usuário atualizado com sucesso.';
+      });
+
+      await _refreshUsers();
+    } on PostgrestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = error.message;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = 'Erro ao atualizar usuário: $error';
+      });
+    }
+  }
+
+  Future<void> _deleteUser(dynamic id) async {
+    setState(() {
+      _statusMessage = null;
+    });
+
+    try {
+      await _supabase.from('users').delete().eq('id', id);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = 'Usuário removido com sucesso.';
+      });
+
+      await _refreshUsers();
+    } on PostgrestException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = error.message;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _statusMessage = 'Erro ao remover usuário: $error';
+      });
+    }
+  }
+
+  Future<void> _showEditDialog(Map<String, dynamic> user) async {
+    final dynamic id = user['id'];
+    final TextEditingController editNameController =
+        TextEditingController(text: user['name'] as String? ?? '');
+    final TextEditingController editEmailController =
+        TextEditingController(text: user['email'] as String? ?? '');
+
+    final bool? shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Editar usuário'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: editNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Nome',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: editEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldSave == true && id != null) {
+      await _updateUser(
+        id: id,
+        name: editNameController.text,
+        email: editEmailController.text,
+      );
+    }
+
+    editNameController.dispose();
+    editEmailController.dispose();
+  }
+
+  Future<void> _confirmDeleteUser(Map<String, dynamic> user) async {
+    final dynamic id = user['id'];
+    if (id == null) {
+      return;
+    }
+
+    final bool? shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Excluir usuário'),
+          content: const Text(
+            'Tem certeza que deseja excluir este usuário?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true) {
+      await _deleteUser(id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ColorScheme colorScheme = Theme.of(context).colorScheme;
@@ -563,6 +752,25 @@ class _UsersPageState extends State<UsersPage> {
                                       title: Text(name),
                                       subtitle:
                                           Text(user['email'] as String? ?? ''),
+                                      trailing: Wrap(
+                                        spacing: 4,
+                                        children: <Widget>[
+                                          IconButton(
+                                            onPressed: () {
+                                              _showEditDialog(user);
+                                            },
+                                            tooltip: 'Editar',
+                                            icon: const Icon(Icons.edit),
+                                          ),
+                                          IconButton(
+                                            onPressed: () {
+                                              _confirmDeleteUser(user);
+                                            },
+                                            tooltip: 'Excluir',
+                                            icon: const Icon(Icons.delete),
+                                          ),
+                                        ],
+                                      ),
                                     );
                                   },
                                 ),
